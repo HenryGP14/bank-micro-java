@@ -1,0 +1,743 @@
+{
+  "info": {
+    "_postman_id": "5d9ae0ab-af09-43de-b09d-48060bc149b0",
+    "name": "Prueba MS - Clientes y Transacciones",
+    "description": "# Prueba MS — Banca (Clientes + Transacciones)\n\nColeccion para probar `ms-client-service` (puerto **8080**) y `ms-transaction-service` (puerto **8081**), comunicados entre si por gRPC.\n\n## Formato de respuesta\n\nToda respuesta REST usa el mismo sobre `BasicResponse`:\n\n```json\n{\n  \"success\": true,\n  \"code\": 201,\n  \"message\": \"Cliente registrado exitosamente\",\n  \"data\": { }\n}\n```\n\nLos errores devuelven `success: false` y el detalle en `message`. `code` siempre refleja el status HTTP real. Ademas, toda respuesta incluye el header `X-Request-Id` (UUID) para correlacionar los logs de ambos microservicios, incluida la llamada gRPC interna que dispare.\n\n## Flujo sugerido\n\n1. **Clientes → Crear Cliente** (publico)\n2. **Clientes → Login** — guarda el `token` (JWT) automaticamente\n3. **Cuentas → Crear Cuenta**\n4. **Movimientos → Crear Movimiento** (Deposito / Retiro)\n5. **Reportes → Estado de Cuenta**\n6. Al final: eliminar Cuenta y luego Cliente (las cuentas/movimientos dependen del cliente via gRPC)\n\n## Variables\n\nSolo hay 3 variables declaradas: `base_url_client`, `base_url_transaction` y `token`. Los ids intermedios (`clienteId`, `numeroCuenta`, `cuentaId`, `movimientoId`) se generan solos en cada request via scripts de test — no hace falta tocarlos a mano.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "16727589"
+  },
+  "item": [
+    {
+      "name": "👤 1. Clientes — ms-client-service (8080)",
+      "item": [
+        {
+          "name": "Crear Cliente (publico)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('success = true', function () { pm.expect(pm.response.json().success).to.be.true; });",
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('clienteId', json.data.idCliente);",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "/*\n{\n  \"nombre\": \"Jose Lema\",\n  \"genero\": \"M\",\n  \"edad\": 35,\n  \"identificacion\": \"1234567890\",\n  \"direccion\": \"Otavalo sn y principal\",\n  \"telefono\": \"098254785\",\n  \"contrasenia\": \"1234\",\n  \"estado\": true\n}\n*/\n/*\n{\n  \"nombre\": \"Marianela Montalvo\",\n  \"genero\": \"F\",\n  \"edad\": 25,\n  \"identificacion\": \"1234567891\",\n  \"direccion\": \"Amazonas y  NNUU\",\n  \"telefono\": \"098254785\",\n  \"contrasenia\": \"5678\",\n  \"estado\": true\n}\n*/\n/*\n{\n  \"nombre\": \"Juan Osorio\",\n  \"genero\": \"M\",\n  \"edad\": 36,\n  \"identificacion\": \"1234567892\",\n  \"direccion\": \"13 junio y Equinoccial \",\n  \"telefono\": \"098874587\",\n  \"contrasenia\": \"1235\",\n  \"estado\": true\n}\n*/\n{\n  \"nombre\": \"Cliente para Eliminar\",\n  \"genero\": \"M\",\n  \"edad\": 36,\n  \"identificacion\": \"1234567893\",\n  \"direccion\": \"13 junio y Equinoccial \",\n  \"telefono\": \"098874587\",\n  \"contrasenia\": \"1235\",\n  \"estado\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes"
+              ]
+            },
+            "description": "**F1** - Crea un cliente. Endpoint publico (`permitAll`) para poder registrarse antes de tener token.\n\nEl body trae 3 clientes de prueba: los dos primeros quedan comentados (`/* ... */`) como referencia y solo se envia el de **Juan Osorio** (el ultimo bloque, sin comentar). Para probar con otro, comenta/descomenta el bloque que necesites.\n\nRespuesta: `BasicResponse<ClienteResponse>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "    pm.collectionVariables.set('clienteId', json.data.idCliente);",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identificacion\": \"1234567892\",\n  \"contrasenia\": \"1235\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url_client}}/api/auth/login",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Autentica al cliente creado y devuelve el JWT dentro de `data.token`. Debe ejecutarse despues de **Crear Cliente**."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar Clientes (publico)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes?page=0&size=20",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Endpoint publico (`permitAll`), no requiere token. Paginado.\n\nRespuesta: `BasicResponse<PageResponse<ClienteResponse>>` — el listado viene en `data.content`, junto con `data.page`, `data.totalElements`, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener Cliente por Id (publico)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes/{{clienteId}}",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}"
+              ]
+            },
+            "description": "Consulta puntual por id, publica igual que el listado.\n\nRespuesta: `BasicResponse<ClienteResponse>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener Mi Cliente (por token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes/me",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "me"
+              ]
+            },
+            "description": "Devuelve el cliente autenticado, extrayendo el id directamente del JWT en `{{token}}` (no hace falta pasar `clienteId`). Requiere `Authorization: Bearer {{token}}` (heredado de la coleccion)."
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar Cliente (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Jose Lema Actualizado\",\n  \"genero\": \"M\",\n  \"edad\": 36,\n  \"identificacion\": \"1234567890\",\n  \"direccion\": \"Otavalo sn y principal\",\n  \"telefono\": \"098254785\",\n  \"contrasenia\": \"1234\",\n  \"estado\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes/me",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "me"
+              ]
+            },
+            "description": "Actualiza al cliente autenticado. El id se toma del JWT (`{{token}}`), no de la URL — asi nadie puede modificar el registro de otro cliente."
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar Cliente Parcial (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"099999999\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes/me",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "me"
+              ]
+            },
+            "description": "Actualiza parcialmente al cliente autenticado (id tomado del JWT)."
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar Cliente",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_client}}/api/clientes/me",
+              "host": [
+                "{{base_url_client}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "me"
+              ]
+            },
+            "description": "⚠️ Ejecutar al final, luego de probar cuentas/movimientos/reportes (estos dependen del cliente via gRPC). Elimina al cliente autenticado (id tomado del JWT)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Alta, autenticacion y CRUD de clientes. `POST /clientes`, `GET /clientes` y `POST /auth/login` son publicos; el resto exige `Authorization: Bearer {{token}}`."
+    },
+    {
+      "name": "💳 2. Cuentas — ms-transaction-service (8081)",
+      "item": [
+        {
+          "name": "Crear Cuenta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('cuentaId', json.data.idCuenta);",
+                  "    pm.collectionVariables.set('numeroCuenta', json.data.numeroCuenta);",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipoCuenta\": \"Ahorros\",\n  \"saldoInicial\": 0,\n  \"estado\": true,\n  \"aleatorio\": false,\n  \"numeroCuenta\": \"495878\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/cuentas",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "cuentas"
+              ]
+            },
+            "description": "**F1** - Crea una cuenta. `clienteId` se valida via gRPC contra `ms-client-service`.\n\nRespuesta: `BasicResponse<CuentaResponse>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar Mis Cuentas (por token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_transaction}}/api/cuentas?page=0&size=20",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "cuentas"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Devuelve solo las cuentas del cliente autenticado (`clienteId` se extrae del JWT en `{{token}}`, no de un parametro). Paginado.\n\nRespuesta: `BasicResponse<PageResponse<CuentaResponse>>` — el listado viene en `data.content`."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener Cuenta por Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_transaction}}/api/cuentas/{{cuentaId}}",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "cuentas",
+                "{{cuentaId}}"
+              ]
+            },
+            "description": "Consulta puntual de una cuenta del cliente autenticado.\n\nRespuesta: `BasicResponse<CuentaResponse>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar Cuenta (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipoCuenta\": \"Ahorros\",\n  \"saldoInicial\": 0,\n  \"estado\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/cuentas/{{cuentaId}}",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "cuentas",
+                "{{cuentaId}}"
+              ]
+            },
+            "description": "Reemplazo completo de la cuenta: a diferencia del PATCH, todos los campos del body son obligatorios."
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar Cuenta Parcial (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/cuentas/{{cuentaId}}",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "cuentas",
+                "{{cuentaId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar Cuenta",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_transaction}}/api/cuentas/{{cuentaId}}",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "cuentas",
+                "{{cuentaId}}"
+              ]
+            },
+            "description": "⚠️ Ejecutar al final, luego de probar movimientos y reportes (dependen de la cuenta)."
+          },
+          "response": []
+        }
+      ],
+      "description": "CRUD de cuentas. `tipoCuenta` admite: `Ahorro`, `Ahorros`, `Corriente` (catalogo precargado). Todas las rutas requieren `Authorization: Bearer {{token}}`; el listado se filtra automaticamente por el cliente autenticado."
+    },
+    {
+      "name": "💸 3. Movimientos — ms-transaction-service (8081)",
+      "item": [
+        {
+          "name": "Crear Movimiento (Deposito)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('movimientoId', json.data.idMovimiento);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numeroCuenta\": \"{{numeroCuenta}}\",\n  \"tipoMovimiento\": \"Deposito\",\n  \"valor\": 600\n}"
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/movimientos",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "movimientos"
+              ]
+            },
+            "description": "**F2** - Registra un movimiento y actualiza el saldo de la cuenta. `tipoMovimiento`: `Deposito` o `Retiro`.\n\nRespuesta: `BasicResponse<MovimientoResponse>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Crear Movimiento (Retiro sin saldo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechaza por saldo no disponible', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 409, 422]);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.false;",
+                  "    pm.expect(json.message).to.include('Saldo no disponible');",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numeroCuenta\": \"{{numeroCuenta}}\",\n  \"tipoMovimiento\": \"Retiro\",\n  \"valor\": 600\n}"
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/movimientos",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "movimientos"
+              ]
+            },
+            "description": "**F3** - Debe fallar con `message: \"Saldo no disponible\"` al retirar mas del saldo actual."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar Movimientos por Numero de Cuenta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_transaction}}/api/movimientos?numeroCuenta={{numeroCuenta}}&page=0&size=20",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "movimientos"
+              ],
+              "query": [
+                {
+                  "key": "numeroCuenta",
+                  "value": "{{numeroCuenta}}"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "`numeroCuenta` es obligatorio. Paginado y ordenado por fecha descendente.\n\nRespuesta: `BasicResponse<PageResponse<MovimientoResponse>>` — si la cuenta no tiene movimientos, `data.content` regresa como `[]` (no error)."
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar Motivo de Movimiento (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Corregido: deposito de nomina\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/movimientos/{{movimientoId}}",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "movimientos",
+                "{{movimientoId}}"
+              ]
+            },
+            "description": "Edita solo el motivo/descripcion de un movimiento existente. Valor y saldo son inmutables — para corregirlos se usa la reversion (DELETE)."
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar Movimiento",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"motivo\": \"Trasferencia o registro incorrecto\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url_transaction}}/api/movimientos/{{movimientoId}}",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "movimientos",
+                "{{movimientoId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Registro y consulta de movimientos. El listado **exige** `numeroCuenta` como query param; si la cuenta no tiene movimientos, `data` regresa `[]` (no error)."
+    },
+    {
+      "name": "📊 4. Reportes — ms-transaction-service (8081)",
+      "item": [
+        {
+          "name": "Reporte Estado de Cuenta (por clienteId)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_transaction}}/api/reportes?clienteId={{clienteId}}&fechaInicio=2020-01-01&fechaFin=2030-12-31",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "reportes"
+              ],
+              "query": [
+                {
+                  "key": "clienteId",
+                  "value": "{{clienteId}}"
+                },
+                {
+                  "key": "fechaInicio",
+                  "value": "2020-01-01"
+                },
+                {
+                  "key": "fechaFin",
+                  "value": "2030-12-31"
+                }
+              ]
+            },
+            "description": "**F4** - Reporte de estado de cuenta, filtrando por rango de fechas y cliente.\n\nRespuesta: `BasicResponse<ReporteEstadoCuentaResponse>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Reporte Estado de Cuenta (por identificación cliente)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_transaction}}/api/reportes?identificacion=1234567892&fechaInicio=2020-01-01&fechaFin=2030-12-31",
+              "host": [
+                "{{base_url_transaction}}"
+              ],
+              "path": [
+                "api",
+                "reportes"
+              ],
+              "query": [
+                {
+                  "key": "identificacion",
+                  "value": "1234567892"
+                },
+                {
+                  "key": "fechaInicio",
+                  "value": "2020-01-01"
+                },
+                {
+                  "key": "fechaFin",
+                  "value": "2030-12-31"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Reporte de estado de cuenta por rango de fechas y cliente (por id o por nombre). Resuelve el nombre del cliente via gRPC contra `ms-client-service`."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url_client",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "base_url_transaction",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "clienteId",
+      "value": ""
+    },
+    {
+      "key": "cuentaId",
+      "value": ""
+    },
+    {
+      "key": "numeroCuenta",
+      "value": ""
+    },
+    {
+      "key": "movimientoId",
+      "value": ""
+    }
+  ]
+}

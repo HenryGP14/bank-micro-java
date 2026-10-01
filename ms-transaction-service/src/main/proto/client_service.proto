@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package com.example.grpc.client;
+
+option java_multiple_files = true;
+option java_package = "com.example.grpc.client";
+
+// Comunicacion interna entre microservicios: operacion + objeto JSON.
+service ClientGrpcService {
+  rpc Execute (GrpcRequest) returns (GrpcResponse);
+}
+
+enum OperationType {
+  OPERATION_TYPE_UNSPECIFIED = 0;
+  GET_CLIENT_BY_ID = 1;
+  reserved 2, 4;
+  VALIDATE_CLIENT = 3;
+  GET_CLIENT_BY_IDENTIFICACION = 5;
+}
+
+message GrpcRequest {
+  OperationType operation_type = 1;
+  string payload_json = 2;
+  // Id de correlacion (UUID) para rastrear una llamada a traves de ambos microservicios en los logs.
+  string trace_id = 3;
+}
+
+message GrpcResponse {
+  string payload_json = 1;
+  // Eco del trace_id recibido en el GrpcRequest.
+  string trace_id = 2;
+}

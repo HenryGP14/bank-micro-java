@@ -1,0 +1,62 @@
+# Despliegue con Docker Swarm usando imagenes YA construidas (este archivo no usa `build:`,
+# Swarm no puede construir imagenes en cada nodo). Construye y etiqueta antes de desplegar:
+#   docker build -t ms-client-service:latest ./ms-client-service
+#   docker build -t ms-transaction-service:latest ./ms-transaction-service
+# (si el swarm tiene mas de un nodo, hay que subir las imagenes a un registry accesible
+# por todos los nodos y referenciarlas aqui como usuario/imagen:tag en vez de solo el nombre)
+#
+# Este archivo NO incluye PostgreSQL: se asume que ya tienes un servidor Postgres
+# instalado/alcanzable (en el host o en la red) con las bases `clients_db` y
+# `transactions_db` ya creadas (ver BaseDatos.sql de cada microservicio).
+#
+# Las variables de entorno no traen valores por defecto: debes definirlas en tu shell
+# antes de desplegar (docker stack deploy no lee archivos .env ni
+# docker-compose.override.yml). Variables requeridas: DB_HOST, DB_PORT, DB_USER,
+# DB_PASSWORD, JWT_SECRET, AES_SECRET. Los nombres de base de datos (DB_NAME) van fijos
+# porque son los que crea cada BaseDatos.sql, no dependen del entorno.
+#
+# Desplegar:
+#   docker swarm init                          # si el swarm aun no esta inicializado
+#   docker stack deploy -c docker-compose.yml banking
+# Bajar:
+#   docker stack rm banking
+
+services:
+  ms-client-service:
+    image: ms-client-service:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: clients_db
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      AES_SECRET: ${AES_SECRET}
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./logs/ms-client-service:/app/logs
+    networks:
+      - banking-net
+
+  ms-transaction-service:
+    image: ms-transaction-service:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: transactions_db
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      CLIENT_SERVICE_HOST: ms-client-service
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./logs/ms-transaction-service:/app/logs
+    networks:
+      - banking-net
+
+networks:
+  banking-net:
+    driver: overlay
